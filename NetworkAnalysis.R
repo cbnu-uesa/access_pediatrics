@@ -13,22 +13,30 @@ setwd("D:\\Analysis\\EMS_access")
 # read data
 #origin <- 
 #destination <-
-roadNetwork_input <- read_sf("D:/05.Data/sp/road_viewT_chungbuk_2019/road6_viewT_chungbuk_2019.shp")
+roadNetwork_input <- read_sf("D:/05.Data/sp/road6_viewT_2019/road6_viewT_chungbuk_2019.shp")
 
-origin = st_sfc(st_point(c(1025368.169, 1886087.496)), crs = 5179)
-destination = st_sfc(st_point(c(1025902.357, 1885893.179)), crs = 5179)
+orig = st_sfc(st_point(c(1025368.169, 1886087.496)), crs = 5179)
+dest = st_sfc(st_point(c(1025902.357, 1885893.179)), crs = 5179)
+
+st_transform(dest, 4326)
 
 firestation = read_sf("D:/Analysis/EMS_access/clean_input/firestation.gpkg")
 tot = read_sf("D:/Analysis/EMS_access/clean_input/poptot_centroid.gpkg")
 hospital = read_sf("D:/Analysis/EMS_access/clean_input/hospital.gpkg")
 
 
-# Caculate OD Cost Matrix
-roadNetwork_data <- roadNetwork_input %>%
+# Calculate OD Cost Matrix
+roadNetwork_input <- roadNetwork_input %>%
   mutate(max_speed = as.integer(max_speed)) %>%
-  mutate(max_speed = ifelse(max_speed == 0, 50, max_speed))
+  mutate(max_speed = ifelse(max_speed == 0, 50, max_speed)) # 제한속도 사용, 속도 없는 곳은 50km/h를 설정
 
-roadNetwork_data <- as_sfnetwork(roadNetwork_data, direct = FALSE) %>%
+duplicate <- roadNetwork_input %>%
+  filter(oneway == "0") # 일방통행을 고려하기 위해 일방통행 아닌 링크만 복제
+duplicate <- st_reverse(duplicate) # 일방통행 아닌 링크를 역방향으로 만듦(예. 노드 1->노드8로 연결되는 링크를 노드 8->노드 1로 수정)
+
+roadNetwork_data <- rbind(roadNetwork_input, duplicate) # 원본과 일방통행 아닌 도로를 결합
+
+roadNetwork_data <- as_sfnetwork(roadNetwork_data, direct = TRUE) %>% # direct =TRUE 옵션으로 방향이 있는 네트워크로 설정
     st_transform(5179) %>%
     activate("edges") %>%
     mutate(distance = edge_length()) %>%
@@ -36,6 +44,7 @@ roadNetwork_data <- as_sfnetwork(roadNetwork_data, direct = FALSE) %>%
 
 
 # calculate OD cost matrix with sfnetwork
+CostToTot <- st_network_cost(roadNetwork_data, orig, dest, weights = "weight")
 CostToTot <- st_network_cost(roadNetwork_data, firestation, tot, weights = "weight")
 CostToEMS <- st_network_cost(roadNetwork_data, tot, hospital, weights = "weight")
 
